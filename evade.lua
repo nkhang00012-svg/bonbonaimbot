@@ -1,10 +1,12 @@
 --[[
-    EVADE MULTIMOD V13.6 (DYNAMIC SPEED UPDATE)
+    EVADE MULTIMOD V13.7
     - P Key / FLY Button: Toggle Advanced CFrame Fly Mode.
-    - V Key / SPEED Button: Toggle Instant CFrame Speed (Có thể điều chỉnh).
-    - R Key / RESCUE Button: TP to target, spam Q for exactly 0.5s, then return home immediately.
-    - NEW: Có nút [+] và [-] để tăng giảm tốc độ di chuyển tùy ý (Mặc định là 45).
-    - Global ESP (Box & Tracers) exclusively for dynamic targets with 'Touch Interest' KILL zones.
+    - V Key / SPEED Button: Toggle Dynamic Speed Lock.
+    - R Key / RESCUE Button: Instant Window Rescue 0.5s.
+    - NEW: [=] Key -> Emote Dash Tiến (Đẩy theo hướng Camera, thoải mái bật Emote rẽ hướng bằng chuột).
+    - NEW: [-] Key -> Emote Dash Lùi (Giật lùi liên tục theo hướng Camera).
+    - NEW: Nhấn giữ / Bật tắt cơ chế Auto Slide (Nhấp Ctrl liên tục tạo chuyển động nhấp nhô).
+    - RightShift: Ẩn/Hiện Menu.
 --]]
 
 local Players = game:GetService("Players")
@@ -18,18 +20,23 @@ local Camera = workspace.CurrentCamera
 local FlyEnabled = false
 local SpeedLockEnabled = false
 local FlySpeed = 60
-local TargetSpeed = 45 -- Mặc định cấu hình ban đầu là 45 theo yêu cầu
+local TargetSpeed = 45 
 local IsProcessingRescue = false
 local ScriptRunning = true
 
+-- States cho 3 tính năng mới
+local DashForwardEnabled = false
+local DashBackwardEnabled = false
+local AutoSlideEnabled = false
+
 -- === UI CREATION ===
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "EvadeGlobalEspV136"
+ScreenGui.Name = "EvadeGlobalEspV137"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 245)
+MainFrame.Size = UDim2.new(0, 260, 0, 360) -- Mở rộng khung để chứa thêm nút hiển thị
 MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 MainFrame.Active = true
@@ -44,7 +51,7 @@ UIStroke.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "EVADE GLOBAL ESP // V13.6"
+Title.Text = "EVADE GLOBAL ESP // V13.7"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.RobotoMono
@@ -54,11 +61,11 @@ Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
 
 local function createButton(text, yPos, color, xSize, xPos)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, xSize or 240, 0, 35)
+    btn.Size = UDim2.new(0, xSize or 240, 0, 32)
     btn.Position = UDim2.new(0, xPos or 10, 0, yPos)
     btn.Text = text
     btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
+    btn.TextSize = 13
     btn.TextColor3 = Color3.fromRGB(255, 255, 255)
     btn.BackgroundColor3 = color
     btn.Parent = MainFrame
@@ -67,35 +74,17 @@ local function createButton(text, yPos, color, xSize, xPos)
 end
 
 local FlyBtn = createButton("FLY MODE: OFF (P)", 50, Color3.fromRGB(150, 0, 50))
+local SpeedMinusBtn = createButton("-", 90, Color3.fromRGB(35, 35, 40), 35, 10)
+local SpeedBtn = createButton("SPEED: OFF (45)", 90, Color3.fromRGB(150, 0, 50), 165, 48)
+local SpeedPlusBtn = createButton("+", 90, Color3.fromRGB(35, 35, 40), 35, 215)
 
--- Thiết kế lại phân vùng Speed gồm 3 nút: Giảm [-], Hiện thị/Kích hoạt, Tăng [+]
-local SpeedMinusBtn = createButton("-", 95, Color3.fromRGB(35, 35, 40), 35, 10)
-local SpeedBtn = createButton("SPEED: OFF (45)", 95, Color3.fromRGB(150, 0, 50), 165, 48)
-local SpeedPlusBtn = createButton("+", 95, Color3.fromRGB(35, 35, 40), 35, 215)
+-- Nút hiển thị trạng thái cho 3 tính năng mới trên UI
+local DashFwdBtn = createButton("EMOTE DASH TIẾN: OFF (=)", 130, Color3.fromRGB(150, 0, 50))
+local DashBwdBtn = createButton("EMOTE DASH LÙI: OFF (-)", 170, Color3.fromRGB(150, 0, 50))
+local SlideBtn = createButton("AUTO SLIDE MACRO: OFF", 210, Color3.fromRGB(150, 0, 50))
 
-local RescueBtn = createButton("WINDOW RESCUE (R)", 140, Color3.fromRGB(0, 120, 200))
-local CloseBtn = createButton("CLOSE SCRIPT", 190, Color3.fromRGB(40, 40, 45))
-
--- === MOBILE BUTTONS ===
-local function createMobileButton(text, yFrame, color)
-    local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(0, 65, 0, 65)
-    btn.Position = UDim2.new(0.82, 0, yFrame, 0)
-    btn.BackgroundColor3 = color
-    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    btn.Text = text
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 14
-    btn.Active = true
-    btn.Draggable = true
-    btn.Parent = ScreenGui
-    Instance.new("UICorner", btn).CornerRadius = UDim.new(1, 0)
-    return btn
-end
-
-local MobileFlyBtn = createMobileButton("FLY", 0.25, Color3.fromRGB(255, 0, 100))
-local MobileSpeedBtn = createMobileButton("SPEED", 0.36, Color3.fromRGB(255, 150, 0))
-local MobileTpBtn = createMobileButton("RESCUE", 0.47, Color3.fromRGB(0, 150, 255))
+local RescueBtn = createButton("WINDOW RESCUE (R)", 255, Color3.fromRGB(0, 120, 200))
+local CloseBtn = createButton("CLOSE SCRIPT", 305, Color3.fromRGB(40, 40, 45))
 
 -- === FLY ENGINE ===
 local function toggleFly()
@@ -133,22 +122,80 @@ local function toggleSpeedLock()
     updateSpeedButtonHolo()
 end
 
--- Quản lý tăng giảm số bước nhảy tốc độ
 SpeedMinusBtn.MouseButton1Click:Connect(function()
-    if TargetSpeed > 16 then
-        TargetSpeed = TargetSpeed - 5
-        updateSpeedButtonHolo()
-    end
+    if TargetSpeed > 16 then TargetSpeed = TargetSpeed - 5 updateSpeedButtonHolo() end
 end)
 
 SpeedPlusBtn.MouseButton1Click:Connect(function()
-    if TargetSpeed < 150 then
-        TargetSpeed = TargetSpeed + 5
-        updateSpeedButtonHolo()
+    if TargetSpeed < 150 then TargetSpeed = TargetSpeed + 5 updateSpeedButtonHolo() end
+end)
+
+-- === TÔI LUYỆN 3 TÍNH NĂNG ĐIỀU HƯỚNG MỚI ===
+local function toggleDashForward()
+    DashForwardEnabled = not DashForwardEnabled
+    if DashForwardEnabled then
+        DashBackwardEnabled = false
+        DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: ON (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
+end
+
+local function toggleDashBackward()
+    DashBackwardEnabled = not DashBackwardEnabled
+    if DashBackwardEnabled then
+        DashForwardEnabled = false
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashBwdBtn.Text = "EMOTE DASH LÙI: ON (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
+end
+
+local function toggleAutoSlide()
+    AutoSlideEnabled = not AutoSlideEnabled
+    if AutoSlideEnabled then
+        SlideBtn.Text = "AUTO SLIDE MACRO: ON"
+        SlideBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        SlideBtn.Text = "AUTO SLIDE MACRO: OFF"
+        SlideBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
+end
+
+DashFwdBtn.MouseButton1Click:Connect(toggleDashForward)
+DashBwdBtn.MouseButton1Click:Connect(toggleDashBackward)
+SlideBtn.MouseButton1Click:Connect(toggleAutoSlide)
+
+-- === AUTO SLIDE MACRO LOOP (NHẤP CTRL) ===
+task.spawn(function()
+    while ScriptRunning do
+        if AutoSlideEnabled and not FlyEnabled and not IsProcessingRescue then
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            -- Chỉ nhấp slide khi nhân vật đang di chuyển hoặc đang dash để tránh bị khựng đứng yên
+            if hum and (hum.MoveDirection.Magnitude > 0 or DashForwardEnabled or DashBackwardEnabled) then
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
+                task.wait(0.08)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.LeftControl, false, game)
+                task.wait(0.08)
+            else
+                task.wait(0.1)
+            end
+        else
+            task.wait(0.2)
+        end
     end
 end)
 
--- CORE RUNTIME ENGINE
+-- === CORE RUNTIME ENGINE (HEARTBEAT) ===
 RunService.Heartbeat:Connect(function(deltaTime)
     if not ScriptRunning then return end
     local char = LocalPlayer.Character
@@ -157,6 +204,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
     
     if not root or not hum or IsProcessingRescue then return end
     
+    -- Ưu tiên 1: Chế độ Bay (Fly Mode)
     if FlyEnabled then
         root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         local moveVector = Vector3.new(0, 0, 0)
@@ -172,6 +220,21 @@ RunService.Heartbeat:Connect(function(deltaTime)
         if moveVector.Magnitude > 0 then
             root.CFrame = root.CFrame + (moveVector.Unit * FlySpeed * deltaTime)
         end
+    
+    -- Ưu tiên 2: Chế độ Emote Dash Tiến (Phím = )
+    elseif DashForwardEnabled then
+        -- Trích xuất hướng nhìn ngang của Camera để tránh bị ghim xuống đất hoặc bay lên trời
+        local camLook = Camera.CFrame.LookVector
+        local flatDirection = Vector3.new(camLook.X, 0, camLook.Z).Unit
+        root.CFrame = root.CFrame + (flatDirection * TargetSpeed * deltaTime)
+        
+    -- Ưu tiên 3: Chế độ Emote Dash Lùi (Phím - )
+    elseif DashBackwardEnabled then
+        local camLook = Camera.CFrame.LookVector
+        local flatDirection = Vector3.new(camLook.X, 0, camLook.Z).Unit
+        root.CFrame = root.CFrame - (flatDirection * TargetSpeed * deltaTime)
+
+    -- Ưu tiên 4: Chạy nhanh thông thường (Speed Hack V)
     elseif SpeedLockEnabled then
         if hum.MoveDirection.Magnitude > 0 then
             local customMove = hum.MoveDirection * TargetSpeed * deltaTime
@@ -200,7 +263,6 @@ end
 
 RunService.RenderStepped:Connect(function()
     if not ScriptRunning then return end
-    
     local validThreats = {}
     
     for _, obj in pairs(workspace:GetChildren()) do
@@ -209,15 +271,9 @@ RunService.RenderStepped:Connect(function()
             if root then
                 local hasKillerJoint = false
                 for _, part in pairs(obj:GetDescendants()) do
-                    if part:IsA("TouchTransmitter") then
-                        hasKillerJoint = true
-                        break
-                    end
+                    if part:IsA("TouchTransmitter") then hasKillerJoint = true break end
                 end
-                
-                if hasKillerJoint then
-                    validThreats[obj] = root
-                end
+                if hasKillerJoint then validThreats[obj] = root end
             end
         end
     end
@@ -231,10 +287,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     for model, root in pairs(validThreats) do
-        if not ActiveEsps[model] then
-            ActiveEsps[model] = createEspElements()
-        end
-
+        if not ActiveEsps[model] then ActiveEsps[model] = createEspElements() end
         local drawings = ActiveEsps[model]
         local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
 
@@ -271,7 +324,6 @@ local function checkIsTargetStillDowned(targetPlayer)
     if char:FindFirstChild("Downed") or char:FindFirstChild("Incapacitated") or (hum and hum.PlatformStand == true) then
         return true
     end
-    
     for _, child in pairs(char:GetDescendants()) do
         if child:IsA("ProximityPrompt") or (child:IsA("ImageLabel") and child.Visible and child.ImageColor3.R > 0.7) then
             return true
@@ -286,38 +338,7 @@ local function isDangerCloseToTarget(targetPosition)
     for _, object in pairs(workspace:GetChildren()) do
         if object:IsA("Model") and not Players:GetPlayerFromCharacter(object) then
             local npcRoot = object:FindFirstChild("HumanoidRootPart") or object:FindFirstChild("PrimaryPart")
-            if npcRoot and (npcRoot.Position - targetPosition).Magnitude <= safetyRadius then
-                return true 
-            end
-        end
-    end
-    for _, p in pairs(Players:GetPlayers()) do
-        if p ~= LocalPlayer and p.Character then
-            local otherRoot = p.Character:FindFirstChild("HumanoidRootPart")
-            if otherRoot and (otherRoot.Position - targetPosition).Magnitude <= safetyRadius then
-                if not checkIsTargetStillDowned(p) then
-                    return true 
-                end
-            end
-        end
-    end
-    return false
-end
-
--- === CARRY STATE VERIFICATION ===
-local function checkIfCarryingSuccess(targetCharacter)
-    local myChar = LocalPlayer.Character
-    if not myChar or not targetCharacter then return false end
-    
-    if targetCharacter:FindFirstChild("Carried") or targetCharacter.Parent == myChar then
-        return true
-    end
-    
-    for _, part in pairs(myChar:GetDescendants()) do
-        if part:IsA("Weld") or part:IsA("WeldConstraint") then
-            if part.Part0 == targetCharacter or part.Part1 == targetCharacter or part.Parent == targetCharacter then
-                return true
-            end
+            if npcRoot and (npcRoot.Position - targetPosition).Magnitude <= safetyRadius then return true end
         end
     end
     return false
@@ -328,34 +349,27 @@ local function findDownedPlayerTarget()
         if p ~= LocalPlayer and p.Character then
             local root = p.Character:FindFirstChild("HumanoidRootPart")
             if root and checkIsTargetStillDowned(p) then
-                if not isDangerCloseToTarget(root.Position) then
-                    return root, p
-                end
+                if not isDangerCloseToTarget(root.Position) then return root, p end
             end
         end
     end
     return nil, nil
 end
 
--- === 0.5s TIME-WINDOW RESCUE ENGINE ===
+-- === WINDOW RESCUE ENGINE ===
 local function executeRescueOperation()
     if IsProcessingRescue or not ScriptRunning then return end
-    
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     if not root then return end
     
     local targetPart, targetPlayer = findDownedPlayerTarget()
-    
     if targetPart and targetPlayer then
         IsProcessingRescue = true
         local originalCFrame = root.CFrame
-        local targetModel = targetPlayer.Character
         
         root.CFrame = targetPart.CFrame + Vector3.new(0, 1.2, 0)
         task.wait(0.1) 
-        
-        Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, targetPart.Position)
         
         local targetPrompt = nil
         for _, obj in pairs(workspace:GetDescendants()) do
@@ -378,69 +392,24 @@ local function executeRescueOperation()
         
         task.wait(0.5) 
         timeWindowActive = false 
-        
         root.CFrame = originalCFrame
-        task.wait(0.1)
-        
-        local carrySuccess = checkIfCarryingSuccess(targetModel)
-        
-        if carrySuccess then
-            local spamActive = true
-            task.spawn(function()
-                while spamActive do
-                    if targetPrompt then fireproximityprompt(targetPrompt) end
-                    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-                    RunService.Heartbeat:Wait()
-                end
-            end)
-            
-            while checkIsTargetStillDowned(targetPlayer) do
-                task.wait(0.05)
-            end
-            
-            spamActive = false
-            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-        else
-            RescueBtn.Text = "TARGET CARRY OFF!"
-            RescueBtn.BackgroundColor3 = Color3.fromRGB(200, 100, 0)
-            task.delay(1.2, function()
-                RescueBtn.Text = "WINDOW RESCUE (R)"
-                RescueBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-            end)
-        end
-        
         IsProcessingRescue = false
-    else
-        RescueBtn.Text = "DANGER / NO TARGET"
-        RescueBtn.BackgroundColor3 = Color3.fromRGB(150, 50, 0)
-        task.delay(1.2, function()
-            RescueBtn.Text = "WINDOW RESCUE (R)"
-            RescueBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 200)
-        end)
     end
 end
 
--- === CONNECTIONS & CLEANUP ===
+-- === CONNECTIONS & KEYBINDS ===
 FlyBtn.MouseButton1Click:Connect(toggleFly)
-MobileFlyBtn.MouseButton1Click:Connect(toggleFly)
-
 SpeedBtn.MouseButton1Click:Connect(toggleSpeedLock)
-MobileSpeedBtn.MouseButton1Click:Connect(toggleSpeedLock)
-
 RescueBtn.MouseButton1Click:Connect(executeRescueOperation)
-MobileTpBtn.MouseButton1Click:Connect(executeRescueOperation)
 
 CloseBtn.MouseButton1Click:Connect(function()
     ScriptRunning = false
     FlyEnabled = false
     SpeedLockEnabled = false
-    
-    for _, drawings in pairs(ActiveEsps) do
-        drawings.Box:Destroy()
-        drawings.Tracer:Destroy()
-    end
-    table.clear(ActiveEsps)
-    
+    DashForwardEnabled = false
+    DashBackwardEnabled = false
+    AutoSlideEnabled = false
+    for _, drawings in pairs(ActiveEsps) do drawings.Box:Destroy() drawings.Tracer:Destroy() end
     ScreenGui:Destroy()
 end)
 
@@ -449,18 +418,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.P then toggleFly()
     elseif input.KeyCode == Enum.KeyCode.V then toggleSpeedLock()
     elseif input.KeyCode == Enum.KeyCode.R then executeRescueOperation()
+    elseif input.KeyCode == Enum.KeyCode.Equals then toggleDashForward() -- Nút phím =
+    elseif input.KeyCode == Enum.KeyCode.Minus then toggleDashBackward() -- Nút phím -
     elseif input.KeyCode == Enum.KeyCode.RightShift then
         MainFrame.Visible = not MainFrame.Visible
-        MobileFlyBtn.Visible = MainFrame.Visible
-        MobileSpeedBtn.Visible = MainFrame.Visible
-        MobileTpBtn.Visible = MainFrame.Visible
         SpeedMinusBtn.Visible = MainFrame.Visible
         SpeedPlusBtn.Visible = MainFrame.Visible
     end
-end)
-
-LocalPlayer.CharacterAdded:Connect(function()
-    FlyEnabled = false
-    SpeedLockEnabled = false
-    IsProcessingRescue = false
 end)
