@@ -1,9 +1,10 @@
 --[[
-    EVADE MULTIMOD V13.5 (INTEGRATED TARGET-SPECIFIC ESP)
+    EVADE MULTIMOD V13.6 (DYNAMIC SPEED UPDATE)
     - P Key / FLY Button: Toggle Advanced CFrame Fly Mode.
-    - V Key / SPEED Button: Toggle Instant CFrame Speed 45.
+    - V Key / SPEED Button: Toggle Instant CFrame Speed (Có thể điều chỉnh).
     - R Key / RESCUE Button: TP to target, spam Q for exactly 0.5s, then return home immediately.
-    - NEW: Global ESP (Box & Tracers) exclusively for dynamic targets with 'Touch Interest' KILL zones (Nextbots, custom threat NPCs).
+    - NEW: Có nút [+] và [-] để tăng giảm tốc độ di chuyển tùy ý (Mặc định là 45).
+    - Global ESP (Box & Tracers) exclusively for dynamic targets with 'Touch Interest' KILL zones.
 --]]
 
 local Players = game:GetService("Players")
@@ -17,13 +18,13 @@ local Camera = workspace.CurrentCamera
 local FlyEnabled = false
 local SpeedLockEnabled = false
 local FlySpeed = 60
-local TargetSpeed = 45
+local TargetSpeed = 45 -- Mặc định cấu hình ban đầu là 45 theo yêu cầu
 local IsProcessingRescue = false
 local ScriptRunning = true
 
 -- === UI CREATION ===
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "EvadeGlobalEspV135"
+ScreenGui.Name = "EvadeGlobalEspV136"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -43,7 +44,7 @@ UIStroke.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "EVADE GLOBAL ESP // V13.5"
+Title.Text = "EVADE GLOBAL ESP // V13.6"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.RobotoMono
@@ -51,10 +52,10 @@ Title.BackgroundColor3 = Color3.fromRGB(25, 10, 20)
 Title.Parent = MainFrame
 Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
 
-local function createButton(text, yPos, color)
+local function createButton(text, yPos, color, xSize, xPos)
     local btn = Instance.new("TextButton")
-    btn.Size = UDim2.new(1, -20, 0, 35)
-    btn.Position = UDim2.new(0, 10, 0, yPos)
+    btn.Size = UDim2.new(0, xSize or 240, 0, 35)
+    btn.Position = UDim2.new(0, xPos or 10, 0, yPos)
     btn.Text = text
     btn.Font = Enum.Font.SourceSansBold
     btn.TextSize = 14
@@ -66,7 +67,12 @@ local function createButton(text, yPos, color)
 end
 
 local FlyBtn = createButton("FLY MODE: OFF (P)", 50, Color3.fromRGB(150, 0, 50))
-local SpeedBtn = createButton("SPEED HACK 45: OFF (V)", 95, Color3.fromRGB(150, 0, 50))
+
+-- Thiết kế lại phân vùng Speed gồm 3 nút: Giảm [-], Hiện thị/Kích hoạt, Tăng [+]
+local SpeedMinusBtn = createButton("-", 95, Color3.fromRGB(35, 35, 40), 35, 10)
+local SpeedBtn = createButton("SPEED: OFF (45)", 95, Color3.fromRGB(150, 0, 50), 165, 48)
+local SpeedPlusBtn = createButton("+", 95, Color3.fromRGB(35, 35, 40), 35, 215)
+
 local RescueBtn = createButton("WINDOW RESCUE (R)", 140, Color3.fromRGB(0, 120, 200))
 local CloseBtn = createButton("CLOSE SCRIPT", 190, Color3.fromRGB(40, 40, 45))
 
@@ -96,7 +102,7 @@ local function toggleFly()
     FlyEnabled = not FlyEnabled
     if FlyEnabled then
         SpeedLockEnabled = false
-        SpeedBtn.Text = "SPEED HACK 45: OFF (V)"
+        SpeedBtn.Text = "SPEED: OFF ("..tostring(TargetSpeed)..")"
         SpeedBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
         FlyBtn.Text = "FLY MODE: ON (P)"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
@@ -106,20 +112,41 @@ local function toggleFly()
     end
 end
 
--- === SPEED ENGINE ===
+-- === SPEED CONTROLLER ENGINE ===
+local function updateSpeedButtonHolo()
+    if SpeedLockEnabled then
+        SpeedBtn.Text = "SPEED: ON ("..tostring(TargetSpeed)..")"
+        SpeedBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        SpeedBtn.Text = "SPEED: OFF ("..tostring(TargetSpeed)..")"
+        SpeedBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
+end
+
 local function toggleSpeedLock()
     SpeedLockEnabled = not SpeedLockEnabled
     if SpeedLockEnabled then
         if FlyEnabled then FlyEnabled = false end
         FlyBtn.Text = "FLY MODE: OFF (P)"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
-        SpeedBtn.Text = "SPEED HACK 45: ON (V)"
-        SpeedBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
-    else
-        SpeedBtn.Text = "SPEED HACK 45: OFF (V)"
-        SpeedBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
     end
+    updateSpeedButtonHolo()
 end
+
+-- Quản lý tăng giảm số bước nhảy tốc độ
+SpeedMinusBtn.MouseButton1Click:Connect(function()
+    if TargetSpeed > 16 then
+        TargetSpeed = TargetSpeed - 5
+        updateSpeedButtonHolo()
+    end
+end)
+
+SpeedPlusBtn.MouseButton1Click:Connect(function()
+    if TargetSpeed < 150 then
+        TargetSpeed = TargetSpeed + 5
+        updateSpeedButtonHolo()
+    end
+end)
 
 -- CORE RUNTIME ENGINE
 RunService.Heartbeat:Connect(function(deltaTime)
@@ -158,7 +185,7 @@ local ActiveEsps = {}
 
 local function createEspElements()
     local box = Drawing.new("Square")
-    box.Color = Color3.fromRGB(255, 10, 10) -- High Warning Red
+    box.Color = Color3.fromRGB(255, 10, 10) 
     box.Thickness = 2
     box.Filled = false
     box.Visible = false
@@ -171,19 +198,15 @@ local function createEspElements()
     return {Box = box, Tracer = tracer}
 end
 
--- Scan targets in workspace non-stop for Nextbots and dynamic threat NPCs
 RunService.RenderStepped:Connect(function()
     if not ScriptRunning then return end
     
     local validThreats = {}
     
     for _, obj in pairs(workspace:GetChildren()) do
-        -- 1. Must be a Model in Workspace
-        -- 2. Must NOT be a valid Player character
         if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) then
             local root = obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("PrimaryPart")
             if root then
-                -- 3. MUST possess a 'TouchInterest' (Killer sensory joint)
                 local hasKillerJoint = false
                 for _, part in pairs(obj:GetDescendants()) do
                     if part:IsA("TouchTransmitter") then
@@ -199,7 +222,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Autosweep drawing cache for models removed by the server
     for model, drawings in pairs(ActiveEsps) do
         if not validThreats[model] then
             drawings.Box:Destroy()
@@ -208,7 +230,6 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Perform draw update loop for all dynamic threat targets
     for model, root in pairs(validThreats) do
         if not ActiveEsps[model] then
             ActiveEsps[model] = createEspElements()
@@ -218,7 +239,6 @@ RunService.RenderStepped:Connect(function()
         local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
 
         if onScreen then
-            -- Dynamics sizing system to scale Box based on threat dimensions and distance
             local extents = model:GetExtentsSize()
             local topWorld = root.Position + Vector3.new(0, extents.Y / 1.5, 0)
             local bottomWorld = root.Position - Vector3.new(0, extents.Y / 1.5, 0)
@@ -232,7 +252,6 @@ RunService.RenderStepped:Connect(function()
             drawings.Box.Position = Vector2.new(screenPos.X - boxWidth / 2, screenPos.Y - boxHeight / 2)
             drawings.Box.Visible = true
 
-            -- Draw tracer line from bottom-center of screen to the threat root
             drawings.Tracer.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
             drawings.Tracer.To = Vector2.new(screenPos.X, screenPos.Y + boxHeight / 2)
             drawings.Tracer.Visible = true
@@ -333,7 +352,6 @@ local function executeRescueOperation()
         local originalCFrame = root.CFrame
         local targetModel = targetPlayer.Character
         
-        -- 1. Instant Teleport right onto the downed player
         root.CFrame = targetPart.CFrame + Vector3.new(0, 1.2, 0)
         task.wait(0.1) 
         
@@ -347,7 +365,6 @@ local function executeRescueOperation()
             end
         end
         
-        -- 2. THE 0.5 SECOND WINDOW: Spam Carry (Q) and Prompt Trigger
         local timeWindowActive = true
         task.spawn(function()
             while timeWindowActive do
@@ -362,15 +379,12 @@ local function executeRescueOperation()
         task.wait(0.5) 
         timeWindowActive = false 
         
-        -- 3. ABSOLUTE RETURN: Instantly return to safe base location
         root.CFrame = originalCFrame
         task.wait(0.1)
         
-        -- 4. VERIFICATION: Did the 0.5s carry window succeed?
         local carrySuccess = checkIfCarryingSuccess(targetModel)
         
         if carrySuccess then
-            -- [CARRY WAS ON] -> Execute stationary safe zone revive loop until fully alive
             local spamActive = true
             task.spawn(function()
                 while spamActive do
@@ -421,7 +435,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     FlyEnabled = false
     SpeedLockEnabled = false
     
-    -- Terminate and deep clear all drawing frames to prevent dynamic memory leaks
     for _, drawings in pairs(ActiveEsps) do
         drawings.Box:Destroy()
         drawings.Tracer:Destroy()
@@ -441,6 +454,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         MobileFlyBtn.Visible = MainFrame.Visible
         MobileSpeedBtn.Visible = MainFrame.Visible
         MobileTpBtn.Visible = MainFrame.Visible
+        SpeedMinusBtn.Visible = MainFrame.Visible
+        SpeedPlusBtn.Visible = MainFrame.Visible
     end
 end)
 
