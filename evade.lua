@@ -1,11 +1,12 @@
 --[[
-    EVADE MULTIMOD V13.7
+    EVADE MULTIMOD V13.8
     - P Key / FLY Button: Toggle Advanced CFrame Fly Mode.
     - V Key / SPEED Button: Toggle Dynamic Speed Lock.
     - R Key / RESCUE Button: Instant Window Rescue 0.5s.
-    - NEW: [=] Key -> Emote Dash Tiến (Đẩy theo hướng Camera, thoải mái bật Emote rẽ hướng bằng chuột).
-    - NEW: [-] Key -> Emote Dash Lùi (Giật lùi liên tục theo hướng Camera).
-    - NEW: Nhấn giữ / Bật tắt cơ chế Auto Slide (Nhấp Ctrl liên tục tạo chuyển động nhấp nhô).
+    - [=] Key -> Emote Dash Tiến (Sử dụng lực đẩy Velocity giúp bật cực cao khi va chạm).
+    - [-] Key -> Emote Dash Lùi (Giật lùi bằng lực đẩy vật lý).
+    - Auto Slide Macro: Nhấp Ctrl liên tục tạo chuyển động nhấp nhô.
+    - NEW: Giữ phím Space 3 giây -> Kích hoạt Auto Jump nhảy liên tục. Nhấn lại Space để tắt.
     - RightShift: Ẩn/Hiện Menu.
 --]]
 
@@ -24,19 +25,20 @@ local TargetSpeed = 45
 local IsProcessingRescue = false
 local ScriptRunning = true
 
--- States cho 3 tính năng mới
+-- States tính năng cũ & mới
 local DashForwardEnabled = false
 local DashBackwardEnabled = false
 local AutoSlideEnabled = false
+local AutoJumpEnabled = false
 
 -- === UI CREATION ===
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "EvadeGlobalEspV137"
+ScreenGui.Name = "EvadeGlobalEspV138"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 360) -- Mở rộng khung để chứa thêm nút hiển thị
+MainFrame.Size = UDim2.new(0, 260, 0, 395) -- Tăng chiều cao chứa thêm trạng thái Auto Jump
 MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 MainFrame.Active = true
@@ -51,7 +53,7 @@ UIStroke.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "EVADE GLOBAL ESP // V13.7"
+Title.Text = "EVADE GLOBAL ESP // V13.8"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.RobotoMono
@@ -78,15 +80,15 @@ local SpeedMinusBtn = createButton("-", 90, Color3.fromRGB(35, 35, 40), 35, 10)
 local SpeedBtn = createButton("SPEED: OFF (45)", 90, Color3.fromRGB(150, 0, 50), 165, 48)
 local SpeedPlusBtn = createButton("+", 90, Color3.fromRGB(35, 35, 40), 35, 215)
 
--- Nút hiển thị trạng thái cho 3 tính năng mới trên UI
 local DashFwdBtn = createButton("EMOTE DASH TIẾN: OFF (=)", 130, Color3.fromRGB(150, 0, 50))
 local DashBwdBtn = createButton("EMOTE DASH LÙI: OFF (-)", 170, Color3.fromRGB(150, 0, 50))
 local SlideBtn = createButton("AUTO SLIDE MACRO: OFF", 210, Color3.fromRGB(150, 0, 50))
+local JumpBtn = createButton("AUTO JUMP: OFF (HOLD SPACE 3S)", 250, Color3.fromRGB(150, 0, 50))
 
-local RescueBtn = createButton("WINDOW RESCUE (R)", 255, Color3.fromRGB(0, 120, 200))
-local CloseBtn = createButton("CLOSE SCRIPT", 305, Color3.fromRGB(40, 40, 45))
+local RescueBtn = createButton("WINDOW RESCUE (R)", 295, Color3.fromRGB(0, 120, 200))
+local CloseBtn = createButton("CLOSE SCRIPT", 345, Color3.fromRGB(40, 40, 45))
 
--- === FLY ENGINE ===
+-- === SYSTEM TOGGLES ===
 local function toggleFly()
     FlyEnabled = not FlyEnabled
     if FlyEnabled then
@@ -101,7 +103,6 @@ local function toggleFly()
     end
 end
 
--- === SPEED CONTROLLER ENGINE ===
 local function updateSpeedButtonHolo()
     if SpeedLockEnabled then
         SpeedBtn.Text = "SPEED: ON ("..tostring(TargetSpeed)..")"
@@ -130,7 +131,6 @@ SpeedPlusBtn.MouseButton1Click:Connect(function()
     if TargetSpeed < 150 then TargetSpeed = TargetSpeed + 5 updateSpeedButtonHolo() end
 end)
 
--- === TÔI LUYỆN 3 TÍNH NĂNG ĐIỀU HƯỚNG MỚI ===
 local function toggleDashForward()
     DashForwardEnabled = not DashForwardEnabled
     if DashForwardEnabled then
@@ -170,17 +170,75 @@ local function toggleAutoSlide()
     end
 end
 
+local function toggleAutoJump()
+    AutoJumpEnabled = not AutoJumpEnabled
+    if AutoJumpEnabled then
+        JumpBtn.Text = "AUTO JUMP: ON"
+        JumpBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        JumpBtn.Text = "AUTO JUMP: OFF (HOLD SPACE 3S)"
+        JumpBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
+end
+
+FlyBtn.MouseButton1Click:Connect(toggleFly)
+SpeedBtn.MouseButton1Click:Connect(toggleSpeedLock)
 DashFwdBtn.MouseButton1Click:Connect(toggleDashForward)
 DashBwdBtn.MouseButton1Click:Connect(toggleDashBackward)
 SlideBtn.MouseButton1Click:Connect(toggleAutoSlide)
+JumpBtn.MouseButton1Click:Connect(toggleAutoJump)
 
--- === AUTO SLIDE MACRO LOOP (NHẤP CTRL) ===
+-- === THỜI GIAN GIỮ SPACE ĐỂ KÍCH HOẠT AUTO JUMP ===
+local spacePressedTime = 0
+local checkSpaceHolding = false
+
+UserInputService.InputBegan:Connect(function(input, gpe)
+    if gpe or not ScriptRunning then return end
+    if input.KeyCode == Enum.KeyCode.Space then
+        if AutoJumpEnabled then
+            toggleAutoJump() -- Nếu đang bật, nhấn đơn Space sẽ TẮT đi
+        else
+            spacePressedTime = tick()
+            checkSpaceHolding = true
+            task.spawn(function()
+                while checkSpaceHolding do
+                    if tick() - spacePressedTime >= 3.0 then -- Giữ đủ 3 giây
+                        toggleAutoJump()
+                        checkSpaceHolding = false
+                        break
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.KeyCode == Enum.KeyCode.Space then
+        checkSpaceHolding = false -- Thả phím sớm trước 3 giây thì hủy đếm
+    end
+end)
+
+-- === AUTO JUMP & SLIDE LOOPS ===
+task.spawn(function()
+    while ScriptRunning do
+        if AutoJumpEnabled and not FlyEnabled and not IsProcessingRescue then
+            local char = LocalPlayer.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if hum and hum.FloorMaterial ~= Enum.Material.Air then
+                hum.Jump = true
+            end
+        end
+        task.wait(0.05)
+    end
+end)
+
 task.spawn(function()
     while ScriptRunning do
         if AutoSlideEnabled and not FlyEnabled and not IsProcessingRescue then
             local char = LocalPlayer.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            -- Chỉ nhấp slide khi nhân vật đang di chuyển hoặc đang dash để tránh bị khựng đứng yên
             if hum and (hum.MoveDirection.Magnitude > 0 or DashForwardEnabled or DashBackwardEnabled) then
                 VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.LeftControl, false, game)
                 task.wait(0.08)
@@ -195,7 +253,7 @@ task.spawn(function()
     end
 end)
 
--- === CORE RUNTIME ENGINE (HEARTBEAT) ===
+-- === CORE RUNTIME ENGINE (PHYSICS & VELOCITY IMPROVED) ===
 RunService.Heartbeat:Connect(function(deltaTime)
     if not ScriptRunning then return end
     local char = LocalPlayer.Character
@@ -221,20 +279,28 @@ RunService.Heartbeat:Connect(function(deltaTime)
             root.CFrame = root.CFrame + (moveVector.Unit * FlySpeed * deltaTime)
         end
     
-    -- Ưu tiên 2: Chế độ Emote Dash Tiến (Phím = )
+    -- Ưu tiên 2: Chế độ Emote Dash Tiến (Sử dụng lực đẩy Vận Tốc)
     elseif DashForwardEnabled then
-        -- Trích xuất hướng nhìn ngang của Camera để tránh bị ghim xuống đất hoặc bay lên trời
         local camLook = Camera.CFrame.LookVector
         local flatDirection = Vector3.new(camLook.X, 0, camLook.Z).Unit
-        root.CFrame = root.CFrame + (flatDirection * TargetSpeed * deltaTime)
         
-    -- Ưu tiên 3: Chế độ Emote Dash Lùi (Phím - )
+        -- Cải tiến độ nảy vật lý: Giữ lại vận tốc cũ theo trục Y (để nhảy/bật tường được đẩy vọt lên)
+        local currentYVelocity = root.AssemblyLinearVelocity.Y
+        local targetVelocity = flatDirection * TargetSpeed
+        
+        root.AssemblyLinearVelocity = Vector3.new(targetVelocity.X, currentYVelocity, targetVelocity.Z)
+        
+    -- Ưu tiên 3: Chế độ Emote Dash Lùi (Sử dụng lực đẩy Vận Tốc)
     elseif DashBackwardEnabled then
         local camLook = Camera.CFrame.LookVector
         local flatDirection = Vector3.new(camLook.X, 0, camLook.Z).Unit
-        root.CFrame = root.CFrame - (flatDirection * TargetSpeed * deltaTime)
+        
+        local currentYVelocity = root.AssemblyLinearVelocity.Y
+        local targetVelocity = -flatDirection * TargetSpeed
+        
+        root.AssemblyLinearVelocity = Vector3.new(targetVelocity.X, currentYVelocity, targetVelocity.Z)
 
-    -- Ưu tiên 4: Chạy nhanh thông thường (Speed Hack V)
+    -- Ưu tiên 4: Chạy nhanh thông thường (Speed Hack V - Giữ nguyên CFrame mượt mà)
     elseif SpeedLockEnabled then
         if hum.MoveDirection.Magnitude > 0 then
             local customMove = hum.MoveDirection * TargetSpeed * deltaTime
@@ -397,9 +463,7 @@ local function executeRescueOperation()
     end
 end
 
--- === CONNECTIONS & KEYBINDS ===
-FlyBtn.MouseButton1Click:Connect(toggleFly)
-SpeedBtn.MouseButton1Click:Connect(toggleSpeedLock)
+-- === KEYBINDS MAPPING ===
 RescueBtn.MouseButton1Click:Connect(executeRescueOperation)
 
 CloseBtn.MouseButton1Click:Connect(function()
@@ -409,6 +473,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     DashForwardEnabled = false
     DashBackwardEnabled = false
     AutoSlideEnabled = false
+    AutoJumpEnabled = false
     for _, drawings in pairs(ActiveEsps) do drawings.Box:Destroy() drawings.Tracer:Destroy() end
     ScreenGui:Destroy()
 end)
@@ -418,8 +483,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.KeyCode == Enum.KeyCode.P then toggleFly()
     elseif input.KeyCode == Enum.KeyCode.V then toggleSpeedLock()
     elseif input.KeyCode == Enum.KeyCode.R then executeRescueOperation()
-    elseif input.KeyCode == Enum.KeyCode.Equals then toggleDashForward() -- Nút phím =
-    elseif input.KeyCode == Enum.KeyCode.Minus then toggleDashBackward() -- Nút phím -
+    elseif input.KeyCode == Enum.KeyCode.Equals then toggleDashForward()
+    elseif input.KeyCode == Enum.KeyCode.Minus then toggleDashBackward()
     elseif input.KeyCode == Enum.KeyCode.RightShift then
         MainFrame.Visible = not MainFrame.Visible
         SpeedMinusBtn.Visible = MainFrame.Visible
