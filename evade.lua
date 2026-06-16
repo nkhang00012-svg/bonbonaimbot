@@ -1,12 +1,12 @@
 --[[
-    EVADE MULTIMOD V13.8
+    EVADE MULTIMOD V14.4.2 (FIXED AUTO JUMP CONFLICT)
     - P Key / FLY Button: Toggle Advanced CFrame Fly Mode.
     - V Key / SPEED Button: Toggle Dynamic Speed Lock.
     - R Key / RESCUE Button: Instant Window Rescue 0.5s.
-    - [=] Key -> Emote Dash Tiến (Sử dụng lực đẩy Velocity giúp bật cực cao khi va chạm).
-    - [-] Key -> Emote Dash Lùi (Giật lùi bằng lực đẩy vật lý).
+    - [=] Key -> Emote Dash Tiến (Plane Mode mượt mà, hãm Y chuẩn).
+    - [-] Key -> Emote Dash Lùi (Giật lùi tự nhiên).
     - Auto Slide Macro: Nhấp Ctrl liên tục tạo chuyển động nhấp nhô.
-    - NEW: Giữ phím Space 3 giây -> Kích hoạt Auto Jump nhảy liên tục. Nhấn lại Space để tắt.
+    - J Key / JUMP Button: Bật/Tắt Auto Jump (Spam phím ảo ổn định, không bị tự tắt).
     - RightShift: Ẩn/Hiện Menu.
 --]]
 
@@ -25,20 +25,23 @@ local TargetSpeed = 45
 local IsProcessingRescue = false
 local ScriptRunning = true
 
--- States tính năng cũ & mới
 local DashForwardEnabled = false
 local DashBackwardEnabled = false
 local AutoSlideEnabled = false
 local AutoJumpEnabled = false
 
+-- Đối tượng quản lý lực vật lý
+local DashAttachment = nil
+local DashVelocity = nil
+
 -- === UI CREATION ===
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "EvadeGlobalEspV138"
+ScreenGui.Name = "EvadeGlobalEspV1442"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 260, 0, 395) -- Tăng chiều cao chứa thêm trạng thái Auto Jump
+MainFrame.Size = UDim2.new(0, 260, 0, 395)
 MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 MainFrame.Active = true
@@ -47,13 +50,13 @@ MainFrame.Parent = ScreenGui
 
 Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
 local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(255, 0, 150) -- Hot Cyber Pink
+UIStroke.Color = Color3.fromRGB(255, 0, 150)
 UIStroke.Thickness = 2
 UIStroke.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 35)
-Title.Text = "EVADE GLOBAL ESP // V13.8"
+Title.Text = "EVADE GLOBAL ESP // V14.4.2"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.TextSize = 13
 Title.Font = Enum.Font.RobotoMono
@@ -83,18 +86,31 @@ local SpeedPlusBtn = createButton("+", 90, Color3.fromRGB(35, 35, 40), 35, 215)
 local DashFwdBtn = createButton("EMOTE DASH TIẾN: OFF (=)", 130, Color3.fromRGB(150, 0, 50))
 local DashBwdBtn = createButton("EMOTE DASH LÙI: OFF (-)", 170, Color3.fromRGB(150, 0, 50))
 local SlideBtn = createButton("AUTO SLIDE MACRO: OFF", 210, Color3.fromRGB(150, 0, 50))
-local JumpBtn = createButton("AUTO JUMP: OFF (HOLD SPACE 3S)", 250, Color3.fromRGB(150, 0, 50))
+local JumpBtn = createButton("AUTO JUMP: OFF (J)", 250, Color3.fromRGB(150, 0, 50))
 
 local RescueBtn = createButton("WINDOW RESCUE (R)", 295, Color3.fromRGB(0, 120, 200))
 local CloseBtn = createButton("CLOSE SCRIPT", 345, Color3.fromRGB(40, 40, 45))
 
+-- === PHYSICS CLEANUP FUNCTION ===
+local function cleanDashPhysics()
+    if DashVelocity then DashVelocity:Destroy() DashVelocity = nil end
+    if DashAttachment then DashAttachment:Destroy() DashAttachment = nil end
+end
+
 -- === SYSTEM TOGGLES ===
 local function toggleFly()
     FlyEnabled = not FlyEnabled
+    cleanDashPhysics()
     if FlyEnabled then
         SpeedLockEnabled = false
+        DashForwardEnabled = false
+        DashBackwardEnabled = false
         SpeedBtn.Text = "SPEED: OFF ("..tostring(TargetSpeed)..")"
         SpeedBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
         FlyBtn.Text = "FLY MODE: ON (P)"
         FlyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     else
@@ -116,9 +132,7 @@ end
 local function toggleSpeedLock()
     SpeedLockEnabled = not SpeedLockEnabled
     if SpeedLockEnabled then
-        if FlyEnabled then FlyEnabled = false end
-        FlyBtn.Text = "FLY MODE: OFF (P)"
-        FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        if FlyEnabled then FlyEnabled = false FlyBtn.Text = "FLY MODE: OFF (P)" FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50) end
     end
     updateSpeedButtonHolo()
 end
@@ -133,8 +147,12 @@ end)
 
 local function toggleDashForward()
     DashForwardEnabled = not DashForwardEnabled
+    cleanDashPhysics()
     if DashForwardEnabled then
         DashBackwardEnabled = false
+        FlyEnabled = false
+        FlyBtn.Text = "FLY MODE: OFF (P)"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
         DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
         DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
         DashFwdBtn.Text = "EMOTE DASH TIẾN: ON (=)"
@@ -147,8 +165,12 @@ end
 
 local function toggleDashBackward()
     DashBackwardEnabled = not DashBackwardEnabled
+    cleanDashPhysics()
     if DashBackwardEnabled then
         DashForwardEnabled = false
+        FlyEnabled = false
+        FlyBtn.Text = "FLY MODE: OFF (P)"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
         DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
         DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
         DashBwdBtn.Text = "EMOTE DASH LÙI: ON (-)"
@@ -173,10 +195,10 @@ end
 local function toggleAutoJump()
     AutoJumpEnabled = not AutoJumpEnabled
     if AutoJumpEnabled then
-        JumpBtn.Text = "AUTO JUMP: ON"
+        JumpBtn.Text = "AUTO JUMP: ON (J)"
         JumpBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     else
-        JumpBtn.Text = "AUTO JUMP: OFF (HOLD SPACE 3S)"
+        JumpBtn.Text = "AUTO JUMP: OFF (J)"
         JumpBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
     end
 end
@@ -188,49 +210,27 @@ DashBwdBtn.MouseButton1Click:Connect(toggleDashBackward)
 SlideBtn.MouseButton1Click:Connect(toggleAutoSlide)
 JumpBtn.MouseButton1Click:Connect(toggleAutoJump)
 
--- === THỜI GIAN GIỮ SPACE ĐỂ KÍCH HOẠT AUTO JUMP ===
-local spacePressedTime = 0
-local checkSpaceHolding = false
-
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if gpe or not ScriptRunning then return end
-    if input.KeyCode == Enum.KeyCode.Space then
-        if AutoJumpEnabled then
-            toggleAutoJump() -- Nếu đang bật, nhấn đơn Space sẽ TẮT đi
-        else
-            spacePressedTime = tick()
-            checkSpaceHolding = true
-            task.spawn(function()
-                while checkSpaceHolding do
-                    if tick() - spacePressedTime >= 3.0 then -- Giữ đủ 3 giây
-                        toggleAutoJump()
-                        checkSpaceHolding = false
-                        break
-                    end
-                    task.wait(0.1)
-                end
-            end)
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.KeyCode == Enum.KeyCode.Space then
-        checkSpaceHolding = false -- Thả phím sớm trước 3 giây thì hủy đếm
-    end
-end)
-
--- === AUTO JUMP & SLIDE LOOPS ===
+-- === LOOPS ===
+-- Vòng lặp Auto Jump Spam phím mượt mà không lo xung đột
 task.spawn(function()
     while ScriptRunning do
         if AutoJumpEnabled and not FlyEnabled and not IsProcessingRescue then
             local char = LocalPlayer.Character
             local hum = char and char:FindFirstChildOfClass("Humanoid")
-            if hum and hum.FloorMaterial ~= Enum.Material.Air then
-                hum.Jump = true
+            local root = char and char:FindFirstChild("HumanoidRootPart")
+            
+            -- Chỉ bấm khi chạm đất hoặc có vận tốc rơi phù hợp để giữ bhop liên tục
+            if hum and root and (hum.FloorMaterial ~= Enum.Material.Air or root.AssemblyLinearVelocity.Y <= 0) then
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Space, false, game)
+                task.wait(0.015)
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Space, false, game)
+                task.wait(0.05)
+            else
+                task.wait(0.01)
             end
+        else
+            task.wait(0.1)
         end
-        task.wait(0.05)
     end
 end)
 
@@ -253,16 +253,19 @@ task.spawn(function()
     end
 end)
 
--- === CORE RUNTIME ENGINE (PHYSICS & VELOCITY IMPROVED) ===
+-- === CORE RUNTIME ENGINE (SMOOTH CLAMP & PLANE VELOCITY) ===
 RunService.Heartbeat:Connect(function(deltaTime)
     if not ScriptRunning then return end
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     
-    if not root or not hum or IsProcessingRescue then return end
+    if not root or not hum or IsProcessingRescue then 
+        cleanDashPhysics()
+        return 
+    end
     
-    -- Ưu tiên 1: Chế độ Bay (Fly Mode)
+    -- 1. Chế độ Bay (Fly Mode)
     if FlyEnabled then
         root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
         local moveVector = Vector3.new(0, 0, 0)
@@ -279,30 +282,63 @@ RunService.Heartbeat:Connect(function(deltaTime)
             root.CFrame = root.CFrame + (moveVector.Unit * FlySpeed * deltaTime)
         end
     
-    -- Ưu tiên 2: Chế độ Emote Dash Tiến (Sử dụng lực đẩy Vận Tốc)
+    -- 2. Chế độ Emote Dash Tiến (Phím = )
     elseif DashForwardEnabled then
         local camLook = Camera.CFrame.LookVector
         local flatDirection = Vector3.new(camLook.X, 0, camLook.Z).Unit
+        local targetVel = flatDirection * TargetSpeed
+
+        if not DashVelocity or not DashVelocity.Parent then
+            cleanDashPhysics()
+            DashAttachment = Instance.new("Attachment")
+            DashAttachment.Parent = root
+            
+            DashVelocity = Instance.new("LinearVelocity")
+            DashVelocity.Attachment0 = DashAttachment
+            DashVelocity.MaxForce = math.huge
+            
+            DashVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
+            DashVelocity.PrimaryTangentAxis = Vector3.new(1, 0, 0)
+            DashVelocity.SecondaryTangentAxis = Vector3.new(0, 0, 1)
+            DashVelocity.Parent = root
+        end
+
+        DashVelocity.PlaneVelocity = Vector2.new(targetVel.X, targetVel.Z)
+
+        if root.AssemblyLinearVelocity.Y > 28 then
+            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 28, root.AssemblyLinearVelocity.Z)
+        end
         
-        -- Cải tiến độ nảy vật lý: Giữ lại vận tốc cũ theo trục Y (để nhảy/bật tường được đẩy vọt lên)
-        local currentYVelocity = root.AssemblyLinearVelocity.Y
-        local targetVelocity = flatDirection * TargetSpeed
-        
-        root.AssemblyLinearVelocity = Vector3.new(targetVelocity.X, currentYVelocity, targetVelocity.Z)
-        
-    -- Ưu tiên 3: Chế độ Emote Dash Lùi (Sử dụng lực đẩy Vận Tốc)
+    -- 3. Chế độ Emote Dash Lùi (Phím - )
     elseif DashBackwardEnabled then
         local camLook = Camera.CFrame.LookVector
         local flatDirection = Vector3.new(camLook.X, 0, camLook.Z).Unit
-        
-        local currentYVelocity = root.AssemblyLinearVelocity.Y
-        local targetVelocity = -flatDirection * TargetSpeed
-        
-        root.AssemblyLinearVelocity = Vector3.new(targetVelocity.X, currentYVelocity, targetVelocity.Z)
+        local targetVel = -flatDirection * TargetSpeed
 
-    -- Ưu tiên 4: Chạy nhanh thông thường (Speed Hack V - Giữ nguyên CFrame mượt mà)
-    elseif SpeedLockEnabled then
-        if hum.MoveDirection.Magnitude > 0 then
+        if not DashVelocity or not DashVelocity.Parent then
+            cleanDashPhysics()
+            DashAttachment = Instance.new("Attachment")
+            DashAttachment.Parent = root
+            
+            DashVelocity = Instance.new("LinearVelocity")
+            DashVelocity.Attachment0 = DashAttachment
+            DashVelocity.MaxForce = math.huge
+            DashVelocity.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
+            DashVelocity.PrimaryTangentAxis = Vector3.new(1, 0, 0)
+            DashVelocity.SecondaryTangentAxis = Vector3.new(0, 0, 1)
+            DashVelocity.Parent = root
+        end
+
+        DashVelocity.PlaneVelocity = Vector2.new(targetVel.X, targetVel.Z)
+
+        if root.AssemblyLinearVelocity.Y > 28 then
+            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 28, root.AssemblyLinearVelocity.Z)
+        end
+
+    -- 4. Chạy nhanh thông thường (Speed Hack phím V)
+    else
+        cleanDashPhysics()
+        if SpeedLockEnabled and hum.MoveDirection.Magnitude > 0 then
             local customMove = hum.MoveDirection * TargetSpeed * deltaTime
             root.CFrame = root.CFrame + customMove
         end
@@ -474,6 +510,7 @@ CloseBtn.MouseButton1Click:Connect(function()
     DashBackwardEnabled = false
     AutoSlideEnabled = false
     AutoJumpEnabled = false
+    cleanDashPhysics()
     for _, drawings in pairs(ActiveEsps) do drawings.Box:Destroy() drawings.Tracer:Destroy() end
     ScreenGui:Destroy()
 end)
@@ -485,6 +522,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     elseif input.KeyCode == Enum.KeyCode.R then executeRescueOperation()
     elseif input.KeyCode == Enum.KeyCode.Equals then toggleDashForward()
     elseif input.KeyCode == Enum.KeyCode.Minus then toggleDashBackward()
+    elseif input.KeyCode == Enum.KeyCode.J then toggleAutoJump()  -- Phím tắt cho Auto Jump ổn định
     elseif input.KeyCode == Enum.KeyCode.RightShift then
         MainFrame.Visible = not MainFrame.Visible
         SpeedMinusBtn.Visible = MainFrame.Visible
