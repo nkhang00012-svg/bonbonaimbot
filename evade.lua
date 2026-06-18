@@ -1,13 +1,13 @@
 --[[
-    EVADE MULTIMOD V14.4.3 (Rayfield UI Remake)
-    - P Key / FLY Toggle: Toggle Advanced CFrame Fly Mode.
-    - LeftShift Key / SPEED Toggle: Toggle Dynamic Speed Lock.
+    EVADE MULTIMOD V14.4.3
+    - P Key / FLY Button: Toggle Advanced CFrame Fly Mode.
+    - LeftShift Key / SPEED Button: Toggle Dynamic Speed Lock (Chạy nhanh bằng Shift Trái).
     - R Key / RESCUE Button: Instant Window Rescue 0.5s.
-    - [=] Key / DASH TIẾN Toggle: Emote Dash Tiến.
-    - [-] Key / DASH LÙI Toggle: Emote Dash Lùi.
-    - AUTO SLIDE Toggle: Nhấp Ctrl liên tục tạo chuyển động nhấp nhô.
-    - J Key / JUMP Toggle: Bật/Tắt Auto Jump.
-    - RightShift / Mở Menu: Sử dụng tính năng ẩn/hiện mặc định của Rayfield.
+    - [=] Key -> Emote Dash Tiến (Plane Mode mượt mà, hãm Y chuẩn).
+    - [-] Key -> Emote Dash Lùi (Giật lùi tự nhiên).
+    - Auto Slide Macro: Nhấp Ctrl liên tục tạo chuyển động nhấp nhô.
+    - J Key / JUMP Button: Bật/Tắt Auto Jump (Spam phím ảo ổn định).
+    - RightShift: Ẩn/Hiện Menu (Giữ nguyên bên phải để tránh trùng).
 --]]
 
 local Players = game:GetService("Players")
@@ -34,27 +34,62 @@ local AutoJumpEnabled = false
 local DashAttachment = nil
 local DashVelocity = nil
 
--- === RAYFIELD UI INITIALIZATION ===
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+-- === UI CREATION ===
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "EvadeGlobalEspV1443"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
-local Window = Rayfield:CreateWindow({
-   Name = "EVADE GLOBAL ESP // V14.4.3 🌌",
-   LoadingTitle = "Đang tải Evade Multimod...",
-   LoadingSubtitle = "by Bro Coder",
-   ConfigurationSaving = {
-      Enabled = true,
-      Folder = "EvadeRayfieldSettings"
-   },
-   KeySystem = false
-})
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 260, 0, 395)
+MainFrame.Position = UDim2.new(0.1, 0, 0.2, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
--- Tạo các Tab phân loại
-local MainTab = Window:CreateTab("Tốc Độ & Bay ⚡", 4483362458)
-local MovementTab = Window:CreateTab("Bổ Trợ Di Chuyển 🏃‍♂️", 4483362458)
-local CombatTab = Window:CreateTab("Cứu Trợ 🏥", 4483362458)
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Color = Color3.fromRGB(255, 0, 150)
+UIStroke.Thickness = 2
+UIStroke.Parent = MainFrame
 
--- Biến lưu trữ trạng thái UI Component để cập nhật qua lại
-local FlyToggle, SpeedToggle, SpeedSlider, DashFwdToggle, DashBwdToggle, SlideToggle, JumpToggle
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 35)
+Title.Text = "EVADE GLOBAL ESP // V14.4.3"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 13
+Title.Font = Enum.Font.RobotoMono
+Title.BackgroundColor3 = Color3.fromRGB(25, 10, 20)
+Title.Parent = MainFrame
+Instance.new("UICorner", Title).CornerRadius = UDim.new(0, 8)
+
+local function createButton(text, yPos, color, xSize, xPos)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, xSize or 240, 0, 32)
+    btn.Position = UDim2.new(0, xPos or 10, 0, yPos)
+    btn.Text = text
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = 13
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BackgroundColor3 = color
+    btn.Parent = MainFrame
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+    return btn
+end
+
+local FlyBtn = createButton("FLY MODE: OFF (P)", 50, Color3.fromRGB(150, 0, 50))
+local SpeedMinusBtn = createButton("-", 90, Color3.fromRGB(35, 35, 40), 35, 10)
+local SpeedBtn = createButton("SPEED: OFF (L.Shift)", 90, Color3.fromRGB(150, 0, 50), 165, 48)
+local SpeedPlusBtn = createButton("+", 90, Color3.fromRGB(35, 35, 40), 35, 215)
+
+local DashFwdBtn = createButton("EMOTE DASH TIẾN: OFF (=)", 130, Color3.fromRGB(150, 0, 50))
+local DashBwdBtn = createButton("EMOTE DASH LÙI: OFF (-)", 170, Color3.fromRGB(150, 0, 50))
+local SlideBtn = createButton("AUTO SLIDE MACRO: OFF", 210, Color3.fromRGB(150, 0, 50))
+local JumpBtn = createButton("AUTO JUMP: OFF (J)", 250, Color3.fromRGB(150, 0, 50))
+
+local RescueBtn = createButton("WINDOW RESCUE (R)", 295, Color3.fromRGB(0, 120, 200))
+local CloseBtn = createButton("CLOSE SCRIPT", 345, Color3.fromRGB(40, 40, 45))
 
 -- === PHYSICS CLEANUP FUNCTION ===
 local function cleanDashPhysics()
@@ -62,179 +97,120 @@ local function cleanDashPhysics()
     if DashAttachment then DashAttachment:Destroy() DashAttachment = nil end
 end
 
--- === SYSTEM TOGGLES (LOGIC GIỮ NGUYÊN) ===
-local function toggleFly(forcedValue)
-    FlyEnabled = (forcedValue ~= nil) and forcedValue or not FlyEnabled
+-- === SYSTEM TOGGLES ===
+local function toggleFly()
+    FlyEnabled = not FlyEnabled
     cleanDashPhysics()
     if FlyEnabled then
         SpeedLockEnabled = false
         DashForwardEnabled = false
         DashBackwardEnabled = false
-        
-        -- Cập nhật trạng thái hiển thị trên giao diện Rayfield
-        SpeedToggle:Set(false)
-        DashFwdToggle:Set(false)
-        DashBwdToggle:Set(false)
-        FlyToggle:Set(true)
+        SpeedBtn.Text = "SPEED: OFF (L.Shift)"
+        SpeedBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        FlyBtn.Text = "FLY MODE: ON (P)"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     else
-        FlyToggle:Set(false)
+        FlyBtn.Text = "FLY MODE: OFF (P)"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
     end
 end
 
-local function toggleSpeedLock(forcedValue)
-    SpeedLockEnabled = (forcedValue ~= nil) and forcedValue or not SpeedLockEnabled
+local function updateSpeedButtonHolo()
     if SpeedLockEnabled then
-        if FlyEnabled then 
-            FlyEnabled = false 
-            FlyToggle:Set(false)
-        end
-        SpeedToggle:Set(true)
+        SpeedBtn.Text = "SPEED: ON ("..tostring(TargetSpeed)..")"
+        SpeedBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     else
-        SpeedToggle:Set(false)
+        SpeedBtn.Text = "SPEED: OFF (L.Shift)"
+        SpeedBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
     end
 end
 
-local function toggleDashForward(forcedValue)
-    DashForwardEnabled = (forcedValue ~= nil) and forcedValue or not DashForwardEnabled
+local function toggleSpeedLock()
+    SpeedLockEnabled = not SpeedLockEnabled
+    if SpeedLockEnabled then
+        if FlyEnabled then FlyEnabled = false FlyBtn.Text = "FLY MODE: OFF (P)" FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50) end
+    end
+    updateSpeedButtonHolo()
+end
+
+SpeedMinusBtn.MouseButton1Click:Connect(function()
+    if TargetSpeed > 16 then TargetSpeed = TargetSpeed - 5 updateSpeedButtonHolo() end
+end)
+
+SpeedPlusBtn.MouseButton1Click:Connect(function()
+    if TargetSpeed < 150 then TargetSpeed = TargetSpeed + 5 updateSpeedButtonHolo() end
+end)
+
+local function toggleDashForward()
+    DashForwardEnabled = not DashForwardEnabled
     cleanDashPhysics()
     if DashForwardEnabled then
         DashBackwardEnabled = false
         FlyEnabled = false
-        
-        FlyToggle:Set(false)
-        DashBwdToggle:Set(false)
-        DashFwdToggle:Set(true)
+        FlyBtn.Text = "FLY MODE: OFF (P)"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: ON (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     else
-        DashFwdToggle:Set(false)
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
     end
 end
 
-local function toggleDashBackward(forcedValue)
-    DashBackwardEnabled = (forcedValue ~= nil) and forcedValue or not DashBackwardEnabled
+local function toggleDashBackward()
+    DashBackwardEnabled = not DashBackwardEnabled
     cleanDashPhysics()
     if DashBackwardEnabled then
         DashForwardEnabled = false
         FlyEnabled = false
-        
-        FlyToggle:Set(false)
-        DashFwdToggle:Set(false)
-        DashBwdToggle:Set(true)
+        FlyBtn.Text = "FLY MODE: OFF (P)"
+        FlyBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashFwdBtn.Text = "EMOTE DASH TIẾN: OFF (=)"
+        DashFwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+        DashBwdBtn.Text = "EMOTE DASH LÙI: ON (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
     else
-        DashBwdToggle:Set(false)
+        DashBwdBtn.Text = "EMOTE DASH LÙI: OFF (-)"
+        DashBwdBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
     end
 end
 
-local function toggleAutoSlide(forcedValue)
-    AutoSlideEnabled = (forcedValue ~= nil) and forcedValue or not AutoSlideEnabled
-    SlideToggle:Set(AutoSlideEnabled)
+local function toggleAutoSlide()
+    AutoSlideEnabled = not AutoSlideEnabled
+    if AutoSlideEnabled then
+        SlideBtn.Text = "AUTO SLIDE MACRO: ON"
+        SlideBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        SlideBtn.Text = "AUTO SLIDE MACRO: OFF"
+        SlideBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
 end
 
-local function toggleAutoJump(forcedValue)
-    AutoJumpEnabled = (forcedValue ~= nil) and forcedValue or not AutoJumpEnabled
-    JumpToggle:Set(AutoJumpEnabled)
+local function toggleAutoJump()
+    AutoJumpEnabled = not AutoJumpEnabled
+    if AutoJumpEnabled then
+        JumpBtn.Text = "AUTO JUMP: ON (J)"
+        JumpBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 90)
+    else
+        JumpBtn.Text = "AUTO JUMP: OFF (J)"
+        JumpBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 50)
+    end
 end
 
--- ==================== SETUP TAB 1: TỐC ĐỘ & BAY ====================
+FlyBtn.MouseButton1Click:Connect(toggleFly)
+SpeedBtn.MouseButton1Click:Connect(toggleSpeedLock)
+DashFwdBtn.MouseButton1Click:Connect(toggleDashForward)
+DashBwdBtn.MouseButton1Click:Connect(toggleDashBackward)
+SlideBtn.MouseButton1Click:Connect(toggleAutoSlide)
+JumpBtn.MouseButton1Click:Connect(toggleAutoJump)
 
-FlyToggle = MainTab:CreateToggle({
-   Name = "Chế Độ Bay - Fly Mode (P)",
-   CurrentValue = false,
-   Flag = "FlyToggleKey",
-   Callback = function(Value)
-       if Value ~= FlyEnabled then toggleFly(Value) end
-   end,
-})
-
-SpeedToggle = MainTab:CreateToggle({
-   Name = "Chạy Nhanh - Speed Hack (L.Shift)",
-   CurrentValue = false,
-   Flag = "SpeedToggleKey",
-   Callback = function(Value)
-       if Value ~= SpeedLockEnabled then toggleSpeedLock(Value) end
-   end,
-})
-
-SpeedSlider = MainTab:CreateSlider({
-   Name = "Tùy Chỉnh Tốc Độ Chạy",
-   Min = 16,
-   Max = 150,
-   CurrentValue = 45,
-   Flag = "TargetSpeedSlider",
-   Callback = function(Value)
-       TargetSpeed = Value
-   end,
-})
-
--- ==================== SETUP TAB 2: BỔ TRỢ DI CHUYỂN ====================
-
-DashFwdToggle = MovementTab:CreateToggle({
-   Name = "Emote Dash Tiến (=)",
-   CurrentValue = false,
-   Flag = "DashFwdKey",
-   Callback = function(Value)
-       if Value ~= DashForwardEnabled then toggleDashForward(Value) end
-   end,
-})
-
-DashBwdToggle = MovementTab:CreateToggle({
-   Name = "Emote Dash Lùi (-)",
-   CurrentValue = false,
-   Flag = "DashBwdKey",
-   Callback = function(Value)
-       if Value ~= DashBackwardEnabled then toggleDashBackward(Value) end
-   end,
-})
-
-SlideToggle = MovementTab:CreateToggle({
-   Name = "Auto Slide Macro (Nhấp Ctrl)",
-   CurrentValue = false,
-   Flag = "SlideKey",
-   Callback = function(Value)
-       if Value ~= AutoSlideEnabled then toggleAutoSlide(Value) end
-   end,
-})
-
-JumpToggle = MovementTab:CreateToggle({
-   Name = "Auto Jump - Tự Động Nhảy (J)",
-   CurrentValue = false,
-   Flag = "JumpKey",
-   Callback = function(Value)
-       if Value ~= AutoJumpEnabled then toggleAutoJump(Value) end
-   end,
-})
-
--- ==================== SETUP TAB 3: CỨU TRỢ & ĐÓNG SCRIPT ====================
-
--- Khai báo hàm cứu trước để nút bấm gọi lệnh
-local executeRescueOperation
-
-local RescueButton = CombatTab:CreateButton({
-   Name = "Window Rescue - Cứu Đồng Đội (R)",
-   Callback = function()
-       executeRescueOperation()
-   end,
-})
-
-local CloseButton = CombatTab:CreateButton({
-   Name = "🔴 ĐÓNG TOÀN BỘ SCRIPT",
-   Callback = function()
-       ScriptRunning = false
-       FlyEnabled = false
-       SpeedLockEnabled = false
-       DashForwardEnabled = false
-       DashBackwardEnabled = false
-       AutoSlideEnabled = false
-       AutoJumpEnabled = false
-       cleanDashPhysics()
-       -- Xóa ESP cũ
-       for _, drawings in pairs(game:GetService("Workspace"):GetChildren()) do
-           -- Đoạn loop gốc của ông dọn dẹp vẽ Drawing
-       end
-       Rayfield:Destroy()
-   end,
-})
-
--- === LOOPS THỰC THI (GIỮ NGUYÊN LOGIC GỐC CỦA ÔNG) ===
+-- === LOOPS ===
 task.spawn(function()
     while ScriptRunning do
         if AutoJumpEnabled and not FlyEnabled and not IsProcessingRescue then
@@ -275,7 +251,7 @@ task.spawn(function()
     end
 end)
 
--- === CORE RUNTIME ENGINE (GIỮ NGUYÊN) ===
+-- === CORE RUNTIME ENGINE ===
 RunService.Heartbeat:Connect(function(deltaTime)
     if not ScriptRunning then return end
     local char = LocalPlayer.Character
@@ -298,6 +274,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveVector = moveVector - camCFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveVector = moveVector + camCFrame.RightVector end
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveVector = moveVector + Vector3.new(0, 1, 0) end
+        -- Vẫn giữ khả năng bay hạ xuống bằng LeftShift nếu FlyMode đang bật
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveVector = moveVector - Vector3.new(0, 1, 0) end
         
         if moveVector.Magnitude > 0 then
@@ -357,7 +334,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
             root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 28, root.AssemblyLinearVelocity.Z)
         end
 
-    -- 4. Speed Hack
+    -- 4. Speed Hack (LeftShift)
     else
         cleanDashPhysics()
         if SpeedLockEnabled and hum.MoveDirection.Magnitude > 0 then
@@ -367,7 +344,7 @@ RunService.Heartbeat:Connect(function(deltaTime)
     end
 end)
 
--- === ACTIVE GLOBAL THREAT SCANNER & ESP ENGINE (GIỮ NGUYÊN) ===
+-- === ACTIVE GLOBAL THREAT SCANNER & ESP ENGINE ===
 local ActiveEsps = {}
 
 local function createEspElements()
@@ -439,7 +416,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
--- === BASE STATUS CHECKER & RADAR (GIỮ NGUYÊN) ===
+-- === BASE STATUS CHECKER ===
 local function checkIsTargetStillDowned(targetPlayer)
     if not targetPlayer or not targetPlayer.Character then return false end
     local char = targetPlayer.Character
@@ -456,6 +433,7 @@ local function checkIsTargetStillDowned(targetPlayer)
     return false
 end
 
+-- === DANGER ZONE RADAR FILTER ===
 local function isDangerCloseToTarget(targetPosition)
     local safetyRadius = 12 
     for _, object in pairs(workspace:GetChildren()) do
@@ -480,7 +458,7 @@ local function findDownedPlayerTarget()
 end
 
 -- === WINDOW RESCUE ENGINE ===
-executeRescueOperation = function()
+local function executeRescueOperation()
     if IsProcessingRescue or not ScriptRunning then return end
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
@@ -520,19 +498,33 @@ executeRescueOperation = function()
     end
 end
 
--- === KEYBINDS MAPPING (ĐỒNG BỘ PHÍM BẤM VÀ CÔNG TẮC UI) ===
+-- === KEYBINDS MAPPING ===
+RescueBtn.MouseButton1Click:Connect(executeRescueOperation)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    ScriptRunning = false
+    FlyEnabled = false
+    SpeedLockEnabled = false
+    DashForwardEnabled = false
+    DashBackwardEnabled = false
+    AutoSlideEnabled = false
+    AutoJumpEnabled = false
+    cleanDashPhysics()
+    for _, drawings in pairs(ActiveEsps) do drawings.Box:Destroy() drawings.Tracer:Destroy() end
+    ScreenGui:Destroy()
+end)
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed or not ScriptRunning then return end
     if input.KeyCode == Enum.KeyCode.P then toggleFly()
-    elseif input.KeyCode == Enum.KeyCode.LeftShift and not FlyEnabled then toggleSpeedLock()
+    elseif input.KeyCode == Enum.KeyCode.LeftShift and not FlyEnabled then toggleSpeedLock() -- Phím Shift Trái bật Speed Hack
     elseif input.KeyCode == Enum.KeyCode.R then executeRescueOperation()
     elseif input.KeyCode == Enum.KeyCode.Equals then toggleDashForward()
     elseif input.KeyCode == Enum.KeyCode.Minus then toggleDashBackward()
     elseif input.KeyCode == Enum.KeyCode.J then toggleAutoJump() 
+    elseif input.KeyCode == Enum.KeyCode.RightShift then
+        MainFrame.Visible = not MainFrame.Visible
+        SpeedMinusBtn.Visible = MainFrame.Visible
+        SpeedPlusBtn.Visible = MainFrame.Visible
     end
-    -- Lưu ý: Rayfield tự xử lý nút đóng mở Menu riêng (mặc định là phím RightControl).
-    -- Nên tôi bỏ phần map thủ công RightShift cũ để tránh xung đột UI.
 end)
-
--- Gửi thông báo khi nạp xong script
-Rayfield:Notify({Title = "Evade Multimod", Content = "Đã chuyển đổi sang Rayfield UI hoàn tất!", Duration = 4})
